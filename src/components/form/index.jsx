@@ -1,12 +1,44 @@
-import { Button, DatePicker, Form, Input, Modal, Select } from "antd";
-import { useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Button, DatePicker, Form, Input, Modal, Radio } from "antd";
+import dayjs from "dayjs";
+import { useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import InputMask from "react-input-mask";
-const { Option } = Select;
+import PhoneInput from "react-phone-number-input";
+import "react-phone-number-input/style.css";
+import * as z from "zod";
+
+const schema = z
+  .object({
+    name: z.string().min(1, "Имя обязательно"),
+    email: z
+      .string()
+      .min(1, "email обязательно")
+      .email("Введите корректный email"),
+    password: z
+      .string()
+      .min(6, "Пароль обязателен минимум 6 символов")
+      .regex(
+        /^(?=.*[A-Z]).*$/,
+        "Пароль должен содержать хотя бы одну заглавную букву латинского алфавита"
+      ),
+    confirmPassword: z.string().min(6, "Подтверждение пароля обязательно"),
+    birthday: z.date({
+      required_error: "Дата рождения обязательна",
+      invalid_type_error: "Введите корректную дату"
+    }),
+    gender: z.string().min(1, "Укажите свой пол"),
+    phone: z
+      .string()
+      .min(1, "Телефон обязателен")
+      .regex(/^\+(?:[0-9]●?){6,14}[0-9]$/, "Введите корректный номер")
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Пароли не совпадают",
+    path: ["confirmPassword"]
+  });
+
 const FormRegistry = () => {
   const [visible, setVisible] = useState(false);
-  const [regData, setRegData] = useState({});
-
   const showModal = () => {
     setVisible(true);
   };
@@ -18,34 +50,48 @@ const FormRegistry = () => {
   const handleCancel = () => {
     setVisible(false);
   };
+  const formRef = useRef(null);
   const {
     control,
     handleSubmit,
     formState: { errors },
     watch
-  } = useForm();
+  } = useForm({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      name: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+      birthday: undefined,
+      gender: "",
+      phone: ""
+    }
+  });
 
   const onSubmit = (data) => {
-    console.log(data);
-    setRegData(data);
+    console.log("Форма отправлена:", data);
     showModal();
   };
 
-  const password = watch("password");
-
   return (
     <>
-      <Form onFinish={handleSubmit(onSubmit)}>
+      <Form ref={formRef} onFinish={handleSubmit(onSubmit)} layout="vertical">
         <Form.Item
           label="Имя"
           validateStatus={errors.name ? "error" : ""}
-          help={errors.name ? errors.name.message : null}
+          help={errors.name?.message}
         >
           <Controller
             name="name"
             control={control}
-            rules={{ required: "Введите Имя" }}
-            render={({ field }) => <Input {...field} autoComplete="name" />}
+            render={({ field }) => (
+              <Input
+                {...field}
+                placeholder="Введите ваше имя"
+                autoComplete="name"
+              />
+            )}
           />
         </Form.Item>
         <Form.Item
@@ -56,58 +102,50 @@ const FormRegistry = () => {
           <Controller
             name="email"
             control={control}
-            rules={{
-              required: "Поле обязательно для заполнения",
-              pattern: {
-                value: /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+.[A-Za-z]{2,4}$/,
-                message: "Введите корректный email"
-              }
-            }}
-            render={({ field }) => <Input {...field} autoComplete="email" />}
+            render={({ field }) => (
+              <Input
+                {...field}
+                placeholder="example@mail.com"
+                autoComplete="email"
+              />
+            )}
           />
         </Form.Item>
         <Form.Item
-          label="Password"
+          label="Пароль"
           validateStatus={errors.password ? "error" : ""}
           help={errors.password ? errors.password.message : null}
         >
           <Controller
             name="password"
             control={control}
-            rules={{
-              required: "Поле обязательно для заполнения",
-              minLength: {
-                value: 6,
-                message: "Пароль должен содержать не менее 6 символов"
-              },
-              pattern: {
-                value: /^(?=.*[A-Z]).*$/,
-                message:
-                  "Пароль должен содержать хотя бы одну заглавную букву латинского алфавита"
-              }
-            }}
             render={({ field }) => (
-              <Input.Password {...field} autoComplete="new-password" />
+              <Input.Password
+                {...field}
+                placeholder="Не менее 6 символов"
+                autoComplete="new-password"
+              />
             )}
           />
         </Form.Item>
         <Form.Item
           label="Подтверждение пароля"
-          validateStatus={errors.confirm ? "error" : ""}
-          help={errors.confirm ? errors.confirm.message : null}
+          validateStatus={errors.confirmPassword ? "error" : ""}
+          help={errors.confirmPassword ? errors.confirmPassword.message : null}
         >
           <Controller
-            name="confirm"
+            name="confirmPassword"
             control={control}
-            rules={{
-              required: "Пожалуйста, подтвердите ваш пароль!",
-              validate: (value) => value === password || "Пароли не совпадают"
-            }}
             render={({ field }) => (
-              <Input.Password {...field} autoComplete="new-password" />
+              <Input.Password
+                {...field}
+                placeholder="Повторите пароль"
+                autoComplete="new-password"
+              />
             )}
           />
         </Form.Item>
+
         <Form.Item
           label="Дата рождения"
           validateStatus={errors.birthday ? "error" : ""}
@@ -116,29 +154,28 @@ const FormRegistry = () => {
           <Controller
             name="birthday"
             control={control}
-            rules={{
-              required: "Пожалуйста, выберите дату рождения!"
-            }}
-            render={({ field }) => <DatePicker {...field} />}
+            render={({ field }) => (
+              <DatePicker
+                style={{ width: "100%" }}
+                onChange={(date) => field.onChange(date?.toDate())}
+                value={field.value ? dayjs(field.value) : null}
+              />
+            )}
           />
         </Form.Item>
-
         <Form.Item
           label="Пол"
           validateStatus={errors.gender ? "error" : ""}
-          help={errors.gender ? errors.gender.message : null}
+          help={errors.gender?.message}
         >
           <Controller
             name="gender"
             control={control}
-            rules={{
-              required: "Пожалуйста, укажите свой пол!"
-            }}
             render={({ field }) => (
-              <Select placeholder="select your gender" {...field}>
-                <Option value="male">Мужской</Option>
-                <Option value="female">Женский</Option>
-              </Select>
+              <Radio.Group {...field}>
+                <Radio value="male"> Мужской </Radio>
+                <Radio value="female"> Женский </Radio>
+              </Radio.Group>
             )}
           />
         </Form.Item>
@@ -150,40 +187,19 @@ const FormRegistry = () => {
           <Controller
             name="phone"
             control={control}
-            defaultValue=""
-            rules={{
-              required: "Пожалуйста, укажите свой телефон!",
-              validate: (value) => {
-                if (value.includes("_")) {
-                  return "Введите полный номер телефона";
-                }
-                if (!/^\+\d{12}$/.test(value)) {
-                  return "Введите номер в формате +XXXXXXXXXXXX";
-                }
-                return true;
-              }
-            }}
             render={({ field }) => (
-              <InputMask
-                mask="+999999999999"
-                maskChar={null}
-                alwaysShowMask={false}
+              <PhoneInput
                 {...field}
-                autoComplete="phone"
-              >
-                {(inputProps) => (
-                  <Input
-                    {...inputProps}
-                    style={{ width: "100%" }}
-                    placeholder="+__________"
-                  />
-                )}
-              </InputMask>
+                international
+                defaultCountry="BY"
+                onChange={field.onChange}
+              />
             )}
           />
         </Form.Item>
+
         <Form.Item>
-          <Button type="primary" htmlType="submit" onClick={showModal}>
+          <Button type="primary" htmlType="submit">
             Зарегистрироваться
           </Button>
         </Form.Item>
@@ -194,7 +210,7 @@ const FormRegistry = () => {
         onOk={handleOk}
         onCancel={handleCancel}
       >
-        <pre>{JSON.stringify(regData, null, 2)}</pre>
+        <pre>{JSON.stringify(watch(), null, 2)}</pre>
       </Modal>
     </>
   );
